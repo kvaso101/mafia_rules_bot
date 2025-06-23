@@ -1,10 +1,27 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
-from openpyxl import load_workbook
-import random
 import os
+import random
+import threading
+from flask import Flask
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    CallbackQueryHandler,
+    ContextTypes
+)
+from openpyxl import load_workbook
 
-# 📘 Приветствие и справка
+# 🎭 Фейковый веб-сервер для Render
+flask_app = Flask(__name__)
+
+@flask_app.route('/')
+def home():
+    return 'Bot is alive on Render!'
+
+def run_flask():
+    flask_app.run(host='0.0.0.0', port=10000)
+
+# 📘 Текст помощи
 HELP_TEXT = (
     "🕵️ Добро пожаловать в викторину по нашей любимой игре — *Мафия*.\n\n"
     "📚 Команды:\n"
@@ -17,7 +34,7 @@ HELP_TEXT = (
     "📌 *Ведущий должен знать правила и быть беспристрастным.*"
 )
 
-# 📥 Загрузка всех вопросов
+# 📥 Загрузка вопросов
 def load_all_questions():
     wb = load_workbook("questions.xlsx")
     sheet = wb.active
@@ -26,12 +43,12 @@ def load_all_questions():
 
 ALL_QUESTIONS = load_all_questions()
 
-# 🧠 Состояния пользователей
+# 🧠 Состояние пользователей
 user_progress = {}
 user_scores = {}
 user_question_sets = {}
 
-# 🚀 /start
+# 🚀 Команды Telegram
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_progress[user_id] = 0
@@ -49,30 +66,26 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=markup
     )
 
-# 🧭 /help
 async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(HELP_TEXT, parse_mode="Markdown")
 
-# 🛑 /stop
 async def stop_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user_progress.pop(user_id, None)
-    user_scores.pop(user_id, None)
-    user_question_sets.pop(user_id, None)
+    uid = update.effective_user.id
+    user_progress.pop(uid, None)
+    user_scores.pop(uid, None)
+    user_question_sets.pop(uid, None)
     await update.message.reply_text("⛔ Викторина прервана.\n\n" + HELP_TEXT, parse_mode="Markdown")
 
-# 📊 /score
 async def show_score(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    correct = user_scores.get(user_id, 0)
-    total = user_progress.get(user_id, 0)
+    uid = update.effective_user.id
+    correct = user_scores.get(uid, 0)
+    total = user_progress.get(uid, 0)
     await update.message.reply_text(f"📊 Ваш счёт: {correct} из {total} пройденных вопросов.")
 
-# 🏆 /leaders по проценту
 async def show_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     stats = []
     for uid in user_scores:
-        correct = user_scores.get(uid, 0)
+        correct = user_scores[uid]
         total = user_progress.get(uid, 0)
         if total >= 5:
             percent = round(correct / total * 100)
@@ -84,14 +97,12 @@ async def show_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     stats.sort(key=lambda x: x[3], reverse=True)
     lines = []
-
     for rank, (uid, correct, total, percent) in enumerate(stats[:10], 1):
         try:
             user = await context.bot.get_chat(uid)
             name = user.username or user.first_name or f"User{uid}"
         except:
             name = f"User{uid}"
-
         lines.append(f"{rank}. @{name}: {correct} из {total} — {percent}%")
 
     await update.message.reply_text("🏆 Лидерборд по точности (от 5 ответов):\n\n" + "\n".join(lines))
@@ -100,25 +111,25 @@ async def show_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_start_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    user_id = query.from_user.id
+    uid = query.from_user.id
 
     count = int(query.data.replace("quiz_", ""))
     selected = random.sample(ALL_QUESTIONS, k=min(count, len(ALL_QUESTIONS)))
-    user_question_sets[user_id] = selected
-    user_progress[user_id] = 0
-    user_scores[user_id] = 0
+    user_question_sets[uid] = selected
+    user_progress[uid] = 0
+    user_scores[uid] = 0
 
-    await query.edit_message_text(f"🔥 Отлично! Загружаю {count} вопросов. Присаживайтесь, уважаемый игрок.")
-    await send_question(query, context, user_id)
+    await query.edit_message_text(f"🔥 Отлично! Загружаю {count} вопросов.")
+    await send_question(query, context, uid)
 
 # ❓ Отправка вопроса
-async def send_question(source, context, user_id):
-    chat_id = getattr(source.message, "chat_id", user_id)
-    idx = user_progress.get(user_id, 0)
-    questions = user_question_sets.get(user_id, [])
+async def send_question(source, context, uid):
+    chat_id = getattr(source.message, "chat_id", uid)
+    idx = user_progress.get(uid, 0)
+    questions = user_question_sets.get(uid, [])
 
     if idx >= len(questions):
-        score = user_scores.get(user_id, 0)
+        score = user_scores.get(uid, 0)
         total = len(questions)
         await context.bot.send_message(
             chat_id=chat_id,
@@ -142,13 +153,13 @@ async def send_question(source, context, user_id):
     markup = InlineKeyboardMarkup(buttons)
     await context.bot.send_message(chat_id=chat_id, text=q["Question"], reply_markup=markup)
 
-# 🎯 Обработка ответа
+# 🎯 Ответ
 async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    user_id = query.from_user.id
-    idx = user_progress.get(user_id, 0)
-    questions = user_question_sets.get(user_id, [])
+    uid = query.from_user.id
+    idx = user_progress.get(uid, 0)
+    questions = user_question_sets.get(uid, [])
 
     if idx >= len(questions):
         await query.edit_message_text("❗️Викторина завершена.")
@@ -161,7 +172,7 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if selected == correct:
         result = "✅ Верно!"
-        user_scores[user_id] += 1
+        user_scores[uid] += 1
     else:
         result = f"❌ Неверно. Правильный ответ: {correct}"
 
@@ -169,8 +180,8 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         result += f"\n\n📘 Объяснение: {explanation}"
 
     await query.edit_message_text(result)
-    user_progress[user_id] += 1
-    await send_question(query, context, user_id)
+    user_progress[uid] += 1
+    await send_question(query, context, uid)
 
 # ▶️ Запуск
 app = ApplicationBuilder().token(os.getenv("BOT_TOKEN")).build()
@@ -181,4 +192,7 @@ app.add_handler(CommandHandler("leaders", show_leaderboard))
 app.add_handler(CommandHandler("stop", stop_quiz))
 app.add_handler(CallbackQueryHandler(handle_start_mode, pattern="^quiz_"))
 app.add_handler(CallbackQueryHandler(handle_answer))
-app.run_polling()
+
+if __name__ == '__main__':
+    threading.Thread(target=run_flask).start()
+    app.run_polling()
