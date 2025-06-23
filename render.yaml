@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: mafia-quiz-bot
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: bash start.sh
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
