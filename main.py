@@ -1,6 +1,7 @@
 import os
 import random
 import threading
+from datetime import datetime
 from flask import Flask
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -27,6 +28,8 @@ MODULES = []
 user_progress = {}
 user_scores = {}
 user_question_sets = {}
+user_start_times = {}
+leaderboards = {}  # {(module, total): [entries]}
 
 # --- Загрузка вопросов ---
 def load_all_questions():
@@ -97,6 +100,8 @@ async def handle_start_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_question_sets[user_id] = selected
     user_progress[user_id] = 0
     user_scores[user_id] = 0
+    user_start_times[user_id] = datetime.utcnow()
+    context.user_data["question_count"] = count
 
     await query.edit_message_text(
         f"🔥 Загружаю {len(selected)} вопросов из модуля *{selected_module}*.",
@@ -112,11 +117,40 @@ async def send_question(source, context, uid):
     if idx >= len(questions):
         score = user_scores.get(uid, 0)
         total = len(questions)
+        duration = (datetime.utcnow() - user_start_times.get(uid, datetime.utcnow())).total_seconds()
+        module = context.user_data.get("selected_module", "Микс")
+        count = context.user_data.get("question_count", total)
+
+        try:
+            user = await context.bot.get_chat(uid)
+            name = user.username or user.first_name or f"User{uid}"
+        except:
+            name = f"User{uid}"
+
+        entry = {
+            "uid": uid,
+            "name": name,
+            "score": score,
+            "total": total,
+            "duration": duration,
+            "date": datetime.utcnow().strftime("%Y-%m-%d")
+        }
+
+        key = (module, count)
+        board = leaderboards.setdefault(key, [])
+        board.append(entry)
+        board.sort(key=lambda x: (-x["score"], x["duration"]))
+        leaderboards[key] = board[:10]
+
         await context.bot.send_message(
             chat_id=chat_id,
             text=(
-                f"🎉 Викторина завершена!\nВы набрали {score} из {total}.\n\n"
-                "👉 /start — начать заново"
+                f"🎉 Викторина завершена!\nВы набрали {score} из {total}.\n"
+                f"⏱ Время прохождения: {int(duration)} сек.\n\n"
+                "👉 /start — начать заново\n"
+                "👉 /score — ваш результат\n"
+                "👉 /leaders — таблица лидеров\n"
+                "👉 /help — справка"
             )
         )
         return
@@ -139,7 +173,7 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     questions = user_question_sets.get(uid, [])
 
     if idx >= len(questions):
-        await query.edit_message_text("❗️Викторина завершена.")
+        await query.edit_message_text(❗️Викторина завершена.")
         return
 
     q = questions[idx]
@@ -160,13 +194,39 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_progress[uid] += 1
     await send_question(query, context, uid)
 
-# --- Запуск ---
-app = ApplicationBuilder().token(os.getenv("BOT_TOKEN")).build()
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CallbackQueryHandler(handle_module_selection, pattern="^module_"))
-app.add_handler(CallbackQueryHandler(handle_start_mode, pattern="^quiz_"))
-app.add_handler(CallbackQueryHandler(handle_answer))
+# --- Команды ---
+async def show_score(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    correct = user_scores.get(uid, 0)
+    total = user_progress.get(uid, 0)
+    await update.message.reply_text(f"📊 Ваш счёт: {correct} из {total} пройденных вопросов.")
 
-if __name__ == '__main__':
-    threading.Thread(target=run_flask).start()
-    app.run_polling()
+async def stop_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    user_progress.pop(uid, None)
+    user_scores.pop(uid, None)
+    user_question_sets.pop(uid, None)
+    user_start_times.pop(uid, None)
+    await update.message.reply_text("🛑 Вы вышли из текущей викторины. Чтобы начать заново, используйте /start.")
+
+HELP_TEXT = (
+    "🕵️ Добро пожаловать в викторину по игре *Мафия*!\n\n"
+    "📚 Команды:\n"
+    "/start — выбрать модуль и начать игру\n"
+    "/score — ваш текущий результат\n"
+    "/leaders — таблица лидеров\n"
+    "/stop — выйти из текущей викторины\n"
+    "/help — справка\n\n"
+    "Ответы выбираются кнопками. Удачи!"
+)
+
+async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(HELP_TEXT, parse_mode="Markdown")
+
+async def show_leaderboard_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    buttons = [
+        [InlineKeyboardButton("5 — Разминка 🔄", callback_data="leaders_5")],
+        [InlineKeyboardButton("10 — Проверка на прочность 🧠", callback_data="leaders_10")],
+        [InlineKeyboardButton("20 — Я ПРО этой игры 🎩", callback_data="leaders_20")]
+    ]
+    markup =
