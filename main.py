@@ -173,7 +173,7 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     questions = user_question_sets.get(uid, [])
 
     if idx >= len(questions):
-        await query.edit_message_text(❗️Викторина завершена.")
+        await query.edit_message_text("Викторина завершена.")
         return
 
     q = questions[idx]
@@ -194,7 +194,7 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_progress[uid] += 1
     await send_question(query, context, uid)
 
-# --- Команды ---
+# --- Дополнительные команды ---
 async def show_score(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     correct = user_scores.get(uid, 0)
@@ -227,6 +227,4 @@ async def show_leaderboard_prompt(update: Update, context: ContextTypes.DEFAULT_
     buttons = [
         [InlineKeyboardButton("5 — Разминка 🔄", callback_data="leaders_5")],
         [InlineKeyboardButton("10 — Проверка на прочность 🧠", callback_data="leaders_10")],
-        [InlineKeyboardButton("20 — Я ПРО этой игры 🎩", callback_data="leaders_20")]
-    ]
-    markup =
+        [InlineKeyboardButton("20 — Я ПРО этой игры 🎩", callback_data="
