@@ -274,15 +274,28 @@ app.add_handler(CallbackQueryHandler(handle_start_mode, pattern="^quiz_"))
 app.add_handler(CallbackQueryHandler(show_leaderboard_filtered, pattern="^leaders_"))
 app.add_handler(CallbackQueryHandler(handle_answer))
 
-if __name__ == '__main__':
-    import asyncio
+from telegram.ext import ApplicationBuilder
 
-    async def main():
-        await app.bot.set_webhook("https://mafia-rules-bot-1.onrender.com/webhook")
-        await app.run_webhook(
-            listen="0.0.0.0",
-            port=10000,
-            webhook_url="/webhook"
-        )
+webhook_url = "https://mafia-rules-bot-1.onrender.com/webhook"
 
-    asyncio.run(main())
+app = ApplicationBuilder().token(os.getenv("BOT_TOKEN")).build()
+
+# Регистрируем хендлеры (если ещё не зарегистрированы)
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("score", show_score))
+app.add_handler(CommandHandler("stop", stop_quiz))
+app.add_handler(CommandHandler("help", show_help))
+app.add_handler(CommandHandler("leaders", show_leaderboard_prompt))
+app.add_handler(CallbackQueryHandler(handle_module_selection, pattern="^module_"))
+app.add_handler(CallbackQueryHandler(handle_start_mode, pattern="^quiz_"))
+app.add_handler(CallbackQueryHandler(show_leaderboard_filtered, pattern="^leaders_"))
+app.add_handler(CallbackQueryHandler(handle_answer))
+
+# Запускаем Webhook без asyncio.run
+app.run_webhook(
+    listen="0.0.0.0",
+    port=10000,
+    webhook_url="/webhook",
+    on_startup=[lambda app: app.bot.set_webhook(webhook_url)],
+    stop_signals=None
+)
