@@ -2,7 +2,6 @@ import os
 import random
 import threading
 from datetime import datetime
-from flask import Flask
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
@@ -11,16 +10,6 @@ from telegram.ext import (
     ContextTypes
 )
 from openpyxl import load_workbook
-
-# --- Flask для Render ---
-flask_app = Flask(__name__)
-
-@flask_app.route('/')
-def home():
-    return 'Bot is alive on Render!'
-
-def run_flask():
-    flask_app.run(host='0.0.0.0', port=10000)
 
 # --- Глобальные переменные ---
 ALL_QUESTIONS = []
@@ -286,5 +275,17 @@ app.add_handler(CallbackQueryHandler(show_leaderboard_filtered, pattern="^leader
 app.add_handler(CallbackQueryHandler(handle_answer))
 
 if __name__ == '__main__':
-    threading.Thread(target=run_flask).start()
-    app.run_polling()
+    import asyncio
+
+    async def main():
+        # Укажи свой фактический Render-домен:
+        webhook_url = "https://mafia-rules-bot-1.onrender.com/webhook"
+
+        await app.bot.set_webhook(webhook_url)
+        await app.run_webhook(
+            listen="0.0.0.0",
+            port=10000,
+            webhook_path="/webhook"
+        )
+
+    asyncio.run(main())
