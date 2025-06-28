@@ -46,7 +46,7 @@ def reload_questions():
 
 reload_questions()
 
-# --- Команды ---
+# --- Команда /start ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_progress[user_id] = 0
@@ -62,6 +62,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=markup
     )
 
+# --- Выбор модуля ---
 async def handle_module_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -82,6 +83,7 @@ async def handle_module_selection(update: Update, context: ContextTypes.DEFAULT_
         reply_markup=markup
     )
 
+# --- Выбор количества вопросов ---
 async def handle_start_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -109,6 +111,7 @@ async def handle_start_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await send_question(query, context, user_id)
 
+# --- Отправка вопроса ---
 async def send_question(source, context, uid):
     chat_id = getattr(source.message, "chat_id", uid)
     idx = user_progress.get(uid, 0)
@@ -165,6 +168,7 @@ async def send_question(source, context, uid):
     markup = InlineKeyboardMarkup(buttons)
     await context.bot.send_message(chat_id=chat_id, text=q["Question"], reply_markup=markup)
 
+# --- Обработка ответа пользователя ---
 async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -194,13 +198,14 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_progress[uid] += 1
     await send_question(query, context, uid)
 
-# --- Дополнительные команды ---
+# --- Команда /score ---
 async def show_score(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     correct = user_scores.get(uid, 0)
     total = user_progress.get(uid, 0)
     await update.message.reply_text(f"📊 Ваш счёт: {correct} из {total} пройденных вопросов.")
 
+# --- Команда /stop ---
 async def stop_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     user_progress.pop(uid, None)
@@ -209,6 +214,7 @@ async def stop_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_start_times.pop(uid, None)
     await update.message.reply_text("🛑 Вы вышли из текущей викторины. Чтобы начать заново, используйте /start.")
 
+# --- Команда /help ---
 HELP_TEXT = (
     "🕵️ Добро пожаловать в викторину по игре *Мафия*!\n\n"
     "📚 Команды:\n"
@@ -223,8 +229,55 @@ HELP_TEXT = (
 async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(HELP_TEXT, parse_mode="Markdown")
 
+# --- Команда /leaders ---
 async def show_leaderboard_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     buttons = [
         [InlineKeyboardButton("5 — Разминка 🔄", callback_data="leaders_5")],
         [InlineKeyboardButton("10 — Проверка на прочность 🧠", callback_data="leaders_10")],
-        [InlineKeyboardButton("20 — Я ПРО этой игры 🎩", callback_data="
+        [InlineKeyboardButton("20 — Я ПРО этой игры 🎩", callback_data="leaders_20")]
+    ]
+    markup = InlineKeyboardMarkup(buttons)
+    await update.message.reply_text(
+        "📊 Выберите количество вопросов, по которым хотите посмотреть таблицу лидеров:",
+        reply_markup=markup
+    )
+
+async def show_leaderboard_filtered(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    count = int(query.data.replace("leaders_", ""))
+    lines = []
+    found = False
+
+    for (module, total), entries in leaderboards.items():
+        if total != count:
+            continue
+        found = True
+        lines.append(f"\n📘 Модуль: *{module}*")
+        for rank, entry in enumerate(entries, 1):
+            name = entry["name"]
+            score = entry["score"]
+            duration = int(entry["duration"])
+            date = entry["date"]
+            lines.append(f"{rank}. @{name}: {score}/{total} — {duration} сек — {date}")
+
+    if not found:
+        await query.edit_message_text(f"😕 Пока нет результатов для {count} вопросов.")
+    else:
+        await query.edit_message_text("🏆 Топ-10 по каждому модулю:\n" + "\n".join(lines), parse_mode="Markdown")
+
+# --- Запуск приложения ---
+app = ApplicationBuilder().token(os.getenv("BOT_TOKEN")).build()
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("score", show_score))
+app.add_handler(CommandHandler("stop", stop_quiz))
+app.add_handler(CommandHandler("help", show_help))
+app.add_handler(CommandHandler("leaders", show_leaderboard_prompt))
+app.add_handler(CallbackQueryHandler(handle_module_selection, pattern="^module_"))
+app.add_handler(CallbackQueryHandler(handle_start_mode, pattern="^quiz_"))
+app.add_handler(CallbackQueryHandler(show_leaderboard_filtered, pattern="^leaders_"))
+app.add_handler(CallbackQueryHandler(handle_answer))
+
+if __name__ == '__main__':
+    threading.Thread(target=run_flask).start()
+    app.run_polling()
