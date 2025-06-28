@@ -117,6 +117,8 @@ async def send_question(source, context, uid):
     idx = user_progress.get(uid, 0)
     questions = user_question_sets.get(uid, [])
 
+    print(f"[DEBUG] UID: {uid}, Progress: {user_progress.get(uid)}, Total: {len(user_question_sets.get(uid, []))}")
+
     if idx >= len(questions):
         score = user_scores.get(uid, 0)
         total = len(questions)
