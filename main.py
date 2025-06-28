@@ -29,7 +29,7 @@ user_progress = {}
 user_scores = {}
 user_question_sets = {}
 user_start_times = {}
-leaderboards = {}  # {(module, total): [entries]}
+leaderboards = {}
 
 # --- Загрузка вопросов ---
 def load_all_questions():
@@ -83,7 +83,7 @@ async def handle_module_selection(update: Update, context: ContextTypes.DEFAULT_
         reply_markup=markup
     )
 
-# --- Выбор количества вопросов ---
+# --- Запуск викторины ---
 async def handle_start_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -116,8 +116,6 @@ async def send_question(source, context, uid):
     chat_id = getattr(source.message, "chat_id", uid)
     idx = user_progress.get(uid, 0)
     questions = user_question_sets.get(uid, [])
-
-    print(f"[DEBUG] UID: {uid}, Progress: {user_progress.get(uid)}, Total: {len(user_question_sets.get(uid, []))}")
 
     if idx >= len(questions):
         score = user_scores.get(uid, 0)
@@ -161,16 +159,25 @@ async def send_question(source, context, uid):
         return
 
     q = questions[idx]
+    options = {
+        "opt_1": q["Option1"],
+        "opt_2": q["Option2"],
+        "opt_3": q["Option3"],
+        "opt_4": q["Option4"]
+    }
+    context.user_data["correct_option"] = str(q["CorrectAnswer"]).strip()
+    context.user_data["options"] = options
+
     buttons = [
-        [InlineKeyboardButton(q["Option1"], callback_data=q["Option1"])],
-        [InlineKeyboardButton(q["Option2"], callback_data=q["Option2"])],
-        [InlineKeyboardButton(q["Option3"], callback_data=q["Option3"])],
-        [InlineKeyboardButton(q["Option4"], callback_data=q["Option4"])]
+        [InlineKeyboardButton(q["Option1"], callback_data="opt_1")],
+        [InlineKeyboardButton(q["Option2"], callback_data="opt_2")],
+        [InlineKeyboardButton(q["Option3"], callback_data="opt_3")],
+        [InlineKeyboardButton(q["Option4"], callback_data="opt_4")]
     ]
     markup = InlineKeyboardMarkup(buttons)
     await context.bot.send_message(chat_id=chat_id, text=q["Question"], reply_markup=markup)
 
-# --- Обработка ответа пользователя ---
+# --- Обработка ответа ---
 async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -182,9 +189,10 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("Викторина завершена.")
         return
 
+    selected_key = query.data
+    selected = context.user_data["options"].get(selected_key)
+    correct = context.user_data["correct_option"]
     q = questions[idx]
-    selected = query.data
-    correct = str(q["CorrectAnswer"]).strip()
     explanation = str(q.get("Explanation", "")).strip()
 
     if selected == correct:
@@ -200,14 +208,13 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_progress[uid] += 1
     await send_question(query, context, uid)
 
-# --- Команда /score ---
+# --- Команды ---
 async def show_score(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     correct = user_scores.get(uid, 0)
     total = user_progress.get(uid, 0)
     await update.message.reply_text(f"📊 Ваш счёт: {correct} из {total} пройденных вопросов.")
 
-# --- Команда /stop ---
 async def stop_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     user_progress.pop(uid, None)
@@ -216,7 +223,6 @@ async def stop_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_start_times.pop(uid, None)
     await update.message.reply_text("🛑 Вы вышли из текущей викторины. Чтобы начать заново, используйте /start.")
 
-# --- Команда /help ---
 HELP_TEXT = (
     "🕵️ Добро пожаловать в викторину по игре *Мафия*!\n\n"
     "📚 Команды:\n"
@@ -231,7 +237,6 @@ HELP_TEXT = (
 async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(HELP_TEXT, parse_mode="Markdown")
 
-# --- Команда /leaders ---
 async def show_leaderboard_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     buttons = [
         [InlineKeyboardButton("5 — Разминка 🔄", callback_data="leaders_5")],
