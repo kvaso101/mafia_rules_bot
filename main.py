@@ -275,10 +275,8 @@ app.add_handler(CallbackQueryHandler(show_leaderboard_filtered, pattern="^leader
 app.add_handler(CallbackQueryHandler(handle_answer))
 
 if __name__ == '__main__':
-    import asyncio
-
-    async def main():
-        await app.bot.delete_webhook(drop_pending_updates=True)
-        await app.run_polling()
-
-    asyncio.run(main())
+    app.run_polling(
+        close_loop=False,
+        allowed_updates=telegram.ext.DEFAULT_NONE,
+        drop_pending_updates=True
+    )
