@@ -278,14 +278,11 @@ if __name__ == '__main__':
     import asyncio
 
     async def main():
-        # Укажи свой фактический Render-домен:
-        webhook_url = "https://mafia-rules-bot-1.onrender.com/webhook"
-
-        await app.bot.set_webhook(webhook_url)
+        await app.bot.set_webhook("https://mafia-rules-bot-1.onrender.com/webhook")
         await app.run_webhook(
             listen="0.0.0.0",
             port=10000,
-            webhook_path="/webhook"
+            webhook_url="/webhook"
         )
 
     asyncio.run(main())
