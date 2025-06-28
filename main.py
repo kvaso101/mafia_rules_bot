@@ -1,6 +1,5 @@
 import os
 import random
-import threading
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -99,7 +98,6 @@ async def handle_start_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
     await send_question(query, context, user_id)
-
 # --- Отправка вопроса ---
 async def send_question(source, context, uid):
     chat_id = getattr(source.message, "chat_id", uid)
@@ -262,25 +260,10 @@ async def show_leaderboard_filtered(update: Update, context: ContextTypes.DEFAUL
     else:
         await query.edit_message_text("🏆 Топ-10 по каждому модулю:\n" + "\n".join(lines), parse_mode="Markdown")
 
-# --- Запуск приложения ---
-app = ApplicationBuilder().token(os.getenv("BOT_TOKEN")).build()
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("score", show_score))
-app.add_handler(CommandHandler("stop", stop_quiz))
-app.add_handler(CommandHandler("help", show_help))
-app.add_handler(CommandHandler("leaders", show_leaderboard_prompt))
-app.add_handler(CallbackQueryHandler(handle_module_selection, pattern="^module_"))
-app.add_handler(CallbackQueryHandler(handle_start_mode, pattern="^quiz_"))
-app.add_handler(CallbackQueryHandler(show_leaderboard_filtered, pattern="^leaders_"))
-app.add_handler(CallbackQueryHandler(handle_answer))
-
+# --- Запуск через polling ---
 from telegram.ext import ApplicationBuilder
 
-webhook_url = "https://mafia-rules-bot-1.onrender.com/webhook"
-
 app = ApplicationBuilder().token(os.getenv("BOT_TOKEN")).build()
-
-# Регистрируем хендлеры (если ещё не зарегистрированы)
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("score", show_score))
 app.add_handler(CommandHandler("stop", stop_quiz))
@@ -291,11 +274,11 @@ app.add_handler(CallbackQueryHandler(handle_start_mode, pattern="^quiz_"))
 app.add_handler(CallbackQueryHandler(show_leaderboard_filtered, pattern="^leaders_"))
 app.add_handler(CallbackQueryHandler(handle_answer))
 
-# Запускаем Webhook без asyncio.run
-app.run_webhook(
-    listen="0.0.0.0",
-    port=10000,
-    webhook_url="/webhook",
-    on_startup=[lambda app: app.bot.set_webhook(webhook_url)],
-    stop_signals=None
-)
+if __name__ == '__main__':
+    import asyncio
+
+    async def main():
+        await app.bot.delete_webhook(drop_pending_updates=True)
+        await app.run_polling()
+
+    asyncio.run(main())
