@@ -1,6 +1,8 @@
 import os
 import random
+import threading
 from datetime import datetime
+from flask import Flask
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
@@ -9,6 +11,16 @@ from telegram.ext import (
     ContextTypes
 )
 from openpyxl import load_workbook
+
+# --- Flask для Render ---
+flask_app = Flask(__name__)
+
+@flask_app.route('/')
+def home():
+    return 'Bot is alive on Render!'
+
+def run_flask():
+    flask_app.run(host='0.0.0.0', port=10000)
 
 # --- Глобальные переменные ---
 ALL_QUESTIONS = []
@@ -98,6 +110,7 @@ async def handle_start_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
     await send_question(query, context, user_id)
+
 # --- Отправка вопроса ---
 async def send_question(source, context, uid):
     chat_id = getattr(source.message, "chat_id", uid)
@@ -260,9 +273,7 @@ async def show_leaderboard_filtered(update: Update, context: ContextTypes.DEFAUL
     else:
         await query.edit_message_text("🏆 Топ-10 по каждому модулю:\n" + "\n".join(lines), parse_mode="Markdown")
 
-# --- Запуск через polling ---
-from telegram.ext import ApplicationBuilder
-
+# --- Запуск приложения ---
 app = ApplicationBuilder().token(os.getenv("BOT_TOKEN")).build()
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("score", show_score))
@@ -275,8 +286,5 @@ app.add_handler(CallbackQueryHandler(show_leaderboard_filtered, pattern="^leader
 app.add_handler(CallbackQueryHandler(handle_answer))
 
 if __name__ == '__main__':
-    app.run_polling(
-        close_loop=False,
-        allowed_updates=telegram.ext.DEFAULT_NONE,
-        drop_pending_updates=True
-    )
+    threading.Thread(target=run_flask).start()
+    app.run_polling()
